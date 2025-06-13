@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel de Sensores MQTT</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3a0ca3;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --success: #4cc9f0;
+            --dark: rgba(26, 26, 46, 0.85);
+            --light: #ffffff;
+            --card-bg: rgba(26, 26, 46, 0.8);
+            --chart-bg: rgba(26, 26, 46, 0.7);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 2rem;
+            color: var(--light);
+            background: 
+                linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.486)),
+                url('./assets/dia.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+
+        body.night {
+            background: 
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url('./assets/noite.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.8rem;
+            margin-bottom: 2rem;
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            position: relative;
+            padding-bottom: 1rem;
+        }
+
+        h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 4px;
+            background: linear-gradient(to right, var(--success), var(--primary));
+            border-radius: 2px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            width: 220px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .card:nth-child(1) { border-top: 4px solid var(--danger); }
+        .card:nth-child(2) { border-top: 4px solid var(--success); }
+        .card:nth-child(3) { border-top: 4px solid var(--warning); }
+        .card:nth-child(4) { border-top: 4px solid var(--primary); }
+
+        .label {
+            font-size: 1.1rem;
+            margin-bottom: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .valor {
+            font-size: 2.2rem;
+            font-weight: 600;
+            margin: 0.5rem 0;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            width: 100%;
+        }
+
+        .chart-container {
+            position: relative;
+            background: var(--chart-bg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .chart-container h3 {
+            margin: 0 0 1.2rem 0;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            color: white;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 280px !important;
+        }
+
+        .status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 0.7rem 1.2rem;
+            border-radius: 50px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            font-size: 0.95rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-dot.connected {
+            background: #4ade80;
+            box-shadow: 0 0 12px #4ade80;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1.2rem;
+                background-attachment: scroll;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+            
+            .charts {
+                grid-template-columns: 1fr;
+            }
+            
+            .card {
+                width: 100%;
+                max-width: 300px;
+                padding: 1.2rem;
+            }
+            
+            .valor {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                gap: 1.8rem;
+            }
+            
+            .card {
+                max-width: 100%;
+            }
+            
+            .chart-container {
+                padding: 1rem;
+            }
+            
+            .valor {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Painel de Monitoramento Ambiental</h1>
+
+    <div class="container">
+        <div class="cards">
+            <div class="card">
+                <div class="label"><i class="fas fa-thermometer-half"></i> Temperatura</div>
+                <div class="valor" id="temp">-- °C</div>
+            </div>
+            <div class="card">
+                <div class="label"><i class="fas fa-tint"></i> Umidade</div>
+                <div class="valor" id="umi">-- %</div>
+            </div>
+            <div class="card">
+                <div class="label"><i class="fas fa-smog"></i> CO₂</div>
+                <div class="valor" id="co2">-- ppm</div>
+            </div>
+            <div class="card">
+                <div class="label"><i class="fas fa-sun"></i> Índice UV</div>
+                <div class="valor" id="uv">--</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-container">
+                <h3><i class="fas fa-thermometer-half"></i> Temperatura</h3>
+                <canvas id="grafTemp"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3><i class="fas fa-tint"></i> Umidade</h3>
+                <canvas id="grafUmi"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3><i class="fas fa-smog"></i> Níveis de CO₂</h3>
+                <canvas id="grafCO2"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3><i class="fas fa-sun"></i> Índice UV</h3>
+                <canvas id="grafUV"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="status" id="connectionStatus">
+        <div class="status-dot"></div>
+        <span>Desconectado</span>
+    </div>
+
+    <script>
+        // Verifica horário para definir tema (dia/noite)
+        function checkTimeOfDay() {
+            const hour = new Date().getHours();
+            if (hour >= 6 && hour < 18) {
+                document.body.classList.remove('night');
+            } else {
+                document.body.classList.add('night');
+            }
+        }
+        
+        // Executa ao carregar e a cada hora
+        checkTimeOfDay();
+        setInterval(checkTimeOfDay, 3600000); // Verifica a cada hora
+
+        // Configuração dos gráficos
+        const makeChart = (ctx, label, color) => new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label,
+                    data: [],
+                    borderColor: color,
+                    backgroundColor: 'transparent',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    pointBackgroundColor: color,
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                    fill: {
+                        target: 'origin',
+                        above: `${color}20`,
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0,0,0,0.85)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: 'rgba(255,255,255,0.2)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                        displayColors: true
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false,
+                            color: 'rgba(255,255,255,0.1)'
+                        },
+                        ticks: { 
+                            color: 'rgba(255,255,255,0.8)' 
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255,255,255,0.1)'
+                        },
+                        ticks: { 
+                            color: 'rgba(255,255,255,0.8)' 
+                        }
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+
+        // Inicializa gráficos
+        const chartTemp = makeChart(
+            document.getElementById('grafTemp').getContext('2d'), 
+            'Temperatura (°C)', 
+            '#f72585'
+        );
+        
+        const chartUmi = makeChart(
+            document.getElementById('grafUmi').getContext('2d'), 
+            'Umidade (%)', 
+            '#4cc9f0'
+        );
+
+        // Gráfico de CO2 com linhas de referência
+        const chartCO2 = makeChart(
+            document.getElementById('grafCO2').getContext('2d'), 
+            'CO₂ (ppm)', 
+            '#f8961e'
+        );
+        
+        // Adiciona linhas de referência ao gráfico de CO2
+        chartCO2.options.plugins.annotation = {
+            annotations: {
+                line1: {
+                    type: 'line',
+                    yMin: 1000,
+                    yMax: 1000,
+                    borderColor: 'orange',
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                    label: {
+                        content: 'Limite Alerta',
+                        enabled: true,
+                        position: 'right',
+                        color: 'orange'
+                    }
+                },
+                line2: {
+                    type: 'line',
+                    yMin: 2000,
+                    yMax: 2000,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                    label: {
+                        content: 'Limite Perigoso',
+                        enabled: true,
+                        position: 'right',
+                        color: 'red'
+                    }
+                }
+            }
+        };
+        chartCO2.update();
+
+        const chartUV = makeChart(
+            document.getElementById('grafUV').getContext('2d'), 
+            'Índice UV', 
+            '#7209b7'
+        );
+
+        // Conexão MQTT
+        const statusElement = document.getElementById('connectionStatus');
+        const statusDot = statusElement.querySelector('.status-dot');
+        
+        const client = mqtt.connect('wss://test.mosquitto.org:8081/mqtt');
+
+        client.on('connect', () => {
+            console.log("✅ Conectado ao broker MQTT");
+            statusElement.querySelector('span').textContent = "Conectado";
+            statusDot.classList.add('connected');
+            client.subscribe('fatec/dados');
+        });
+
+        client.on('reconnect', () => {
+            statusElement.querySelector('span').textContent = "Reconectando...";
+            statusDot.classList.remove('connected');
+        });
+
+        client.on('offline', () => {
+            statusElement.querySelector('span').textContent = "Offline";
+            statusDot.classList.remove('connected');
+        });
+
+        client.on('error', (error) => {
+            console.error("Erro na conexão:", error);
+            statusElement.querySelector('span').textContent = "Erro na conexão";
+            statusDot.classList.remove('connected');
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                const dados = JSON.parse(message.toString());
+                
+                // Atualiza cards
+                document.getElementById('temp').textContent = `${dados.temperatura} °C`;
+                document.getElementById('umi').textContent = `${dados.umidade} %`;
+                document.getElementById('co2').textContent = `${dados.co2} ppm`;
+                document.getElementById('uv').textContent = `${dados.uv}`;
+
+                const horario = new Date().toLocaleTimeString();
+
+                // Atualiza gráficos
+                const atualizarGrafico = (grafico, valor) => {
+                    grafico.data.labels.push(horario);
+                    grafico.data.datasets[0].data.push(valor);
+                    
+                    if (grafico.data.labels.length > 15) {
+                        grafico.data.labels.shift();
+                        grafico.data.datasets[0].data.shift();
+                    }
+                    
+                    grafico.update();
+                };
+
+                atualizarGrafico(chartTemp, dados.temperatura);
+                atualizarGrafico(chartUmi, dados.umidade);
+                atualizarGrafico(chartCO2, dados.co2);
+                atualizarGrafico(chartUV, dados.uv);
+                
+            } catch (e) {
+                console.error('Erro ao processar mensagem:', e);
+            }
+        });
+
+        // Efeito de digitação no título
+        const title = document.querySelector('h1');
+        const originalText = title.textContent;
+        title.textContent = '';
+        
+        let i = 0;
+        const typingEffect = setInterval(() => {
+            if (i < originalText.length) {
+                title.textContent += originalText.charAt(i);
+                i++;
+            } else {
+                clearInterval(typingEffect);
+            }
+        }, 100);
+    </script>
+</body>
+</html>
